@@ -45,15 +45,28 @@ function pinchPoint(hand, w, h) {
 }
 
 // Quadrat, dessen linke und rechte Kantenmitte auf den Pinch-Punkten a und b liegen: Größe = Abstand, Drehung = Winkel.
-function drawSquare(a, b) {
-  const side = Math.hypot(b.x - a.x, b.y - a.y);
+const squareOf = (a, b) => ({
+  x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+  angle: Math.atan2(b.y - a.y, b.x - a.x), side: Math.hypot(b.x - a.x, b.y - a.y),
+});
+
+function drawSquare({ x, y, angle, side }, color) {
   ctx.save();
-  ctx.translate((a.x + b.x) / 2, (a.y + b.y) / 2);
-  ctx.rotate(Math.atan2(b.y - a.y, b.x - a.x));
-  ctx.strokeStyle = "#ffeb3b";
-  ctx.lineWidth = 6;
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 16;
   ctx.strokeRect(-side / 2, -side / 2, side, side);
   ctx.restore();
+}
+
+// Loslassen = Quadrat wird platziert. Erst nach ein paar Bildern ohne Pinch, damit ein einzelner Tracking-Aussetzer nichts platziert.
+const LOST_FRAMES = 5;
+let active = null, lost = 0;
+const placed = [];
+function update(now) {
+  if (now) { active = now; lost = 0; }
+  else if (active && ++lost > LOST_FRAMES) { placed.push(active); active = null; }
 }
 
 try {
@@ -84,7 +97,9 @@ try {
         draw.drawLandmarks(hand, { color: "#ff4081", radius: 4 });
       }
       const pinches = landmarks.map((hand) => pinchPoint(hand, canvas.width, canvas.height)).filter(Boolean);
-      if (pinches.length === 2) drawSquare(...pinches);
+      update(pinches.length === 2 ? squareOf(...pinches) : null);
+      placed.forEach((s) => drawSquare(s, "#69f0ae"));
+      if (active) drawSquare(active, "#ffeb3b");
       status.textContent = pinches.length === 2 ? "Quadrat aktiv 🟨"
         : landmarks.length ? `${landmarks.length} Hand/Hände erkannt – Daumen + Zeigefinger zusammen, beide Hände`
         : "Zeig mir deine Hände ✋";
