@@ -50,15 +50,6 @@ function pinchPoint(hand, w, h) {
     : null;
 }
 
-// Daumen runter: Daumenspitze (4) liegt deutlich unter dem Daumenansatz (2), zeigt mehr nach unten als zur Seite
-// und liegt tiefer als alle Fingerspitzen (8, 12, 16, 20). Das Handgelenk zählt nicht: bei Tablets kommt der Arm oft von unten.
-const THUMB_DOWN = 0.3;
-function thumbDown(hand, w, h) {
-  const size = Math.hypot((hand[0].x - hand[9].x) * w, (hand[0].y - hand[9].y) * h);
-  const dx = (hand[4].x - hand[2].x) * w, dy = (hand[4].y - hand[2].y) * h;
-  return dy > THUMB_DOWN * size && dy > Math.abs(dx) && [8, 12, 16, 20].every((i) => hand[4].y > hand[i].y);
-}
-
 // Quadrat, dessen linke und rechte Kantenmitte auf den Pinch-Punkten a und b liegen: Größe = Abstand, Drehung = Winkel.
 const squareOf = (a, b) => ({
   x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
@@ -113,7 +104,7 @@ try {
         draw.drawLandmarks(hand, { color: "#ff4081", radius: 4 });
       }
       const pinches = landmarks.map((hand) => pinchPoint(hand, canvas.width, canvas.height)).filter(Boolean);
-      sign.hidden = !landmarks.some((hand) => thumbDown(hand, canvas.width, canvas.height));
+      sign.hidden = !landmarks.length;
       update(pinches.length === 2 ? squareOf(...pinches) : null);
       placed.forEach((s) => drawSquare(s, "#69f0ae"));
       if (active) drawSquare(active, "#ffeb3b");
