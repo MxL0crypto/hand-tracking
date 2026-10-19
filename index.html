@@ -13,8 +13,6 @@
   video, canvas { width: 100%; display: block; transform: scaleX(-1); } /* Selfie-Ansicht */
   canvas { position: absolute; inset: 0; height: 100%; }
   #status { padding: 12px 16px; }
-  #sign { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font: 900 min(45vw, 70vh) system-ui, sans-serif; color: #fff; text-shadow: 0 0 40px #000, 0 0 12px #000; }
-  #sign[hidden] { display: none; }
   #clear { position: absolute; top: 12px; right: 12px; min-width: 96px; min-height: 48px; padding: 0 20px; font: inherit; color: #fff; background: rgba(0,0,0,.6); border: 2px solid #fff; border-radius: 12px; }
 </style>
 </head>
@@ -22,7 +20,6 @@
 <main>
   <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas"></canvas>
-  <div id="sign" hidden>67</div>
   <button id="clear">Löschen</button>
   <div id="status">Lade Modell …</div>
 </main>
@@ -33,9 +30,7 @@ import { HandLandmarker, FilesetResolver, DrawingUtils }
 
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
-const status = document.getElementById("status");
-const sign = document.getElementById("sign");
-const ctx = canvas.getContext("2d");
+const status = document.getElementById("status");const ctx = canvas.getContext("2d");
 const draw = new DrawingUtils(ctx);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
@@ -71,8 +66,17 @@ const LOST_FRAMES = 5;
 let active = null, lost = 0;
 const placed = [];
 document.getElementById("clear").onclick = () => { placed.length = 0; };
+// Glättung gegen Zittern: 1 = keine, kleiner = ruhiger aber träger. Winkel sind nach 180° gleich (Hände vertauscht), daher dort umbrechen.
+const SMOOTH = 0.5;
+function smooth(prev, next) {
+  if (!prev) return next;
+  const mix = (a, b) => a + (b - a) * SMOOTH;
+  const dAngle = ((((next.angle - prev.angle + Math.PI / 2) % Math.PI) + Math.PI) % Math.PI) - Math.PI / 2;
+  return { x: mix(prev.x, next.x), y: mix(prev.y, next.y), side: mix(prev.side, next.side), angle: prev.angle + dAngle * SMOOTH };
+}
+
 function update(now) {
-  if (now) { active = now; lost = 0; }
+  if (now) { active = smooth(active, now); lost = 0; }
   else if (active && ++lost > LOST_FRAMES) { placed.push(active); active = null; }
 }
 
@@ -86,6 +90,10 @@ try {
     },
     runningMode: "VIDEO",
     numHands: 2,
+    // Standard ist 0.5: niedriger = Hände gehen seltener verloren (dafür selten Fehlerkennungen)
+    minHandDetectionConfidence: 0.3,
+    minHandPresenceConfidence: 0.3,
+    minTrackingConfidence: 0.3,
   });
 
   video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
@@ -104,7 +112,6 @@ try {
         draw.drawLandmarks(hand, { color: "#ff4081", radius: 4 });
       }
       const pinches = landmarks.map((hand) => pinchPoint(hand, canvas.width, canvas.height)).filter(Boolean);
-      sign.hidden = !landmarks.length;
       update(pinches.length === 2 ? squareOf(...pinches) : null);
       placed.forEach((s) => drawSquare(s, "#69f0ae"));
       if (active) drawSquare(active, "#ffeb3b");
