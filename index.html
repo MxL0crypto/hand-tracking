@@ -13,6 +13,8 @@
   video, canvas { width: 100%; display: block; transform: scaleX(-1); } /* Selfie-Ansicht */
   canvas { position: absolute; inset: 0; height: 100%; }
   #status { padding: 12px 16px; }
+  #sign { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font: 900 min(45vw, 70vh) system-ui, sans-serif; color: #fff; text-shadow: 0 0 40px #000, 0 0 12px #000; }
+  #sign[hidden] { display: none; }
   #clear { position: absolute; top: 12px; right: 12px; min-width: 96px; min-height: 48px; padding: 0 20px; font: inherit; color: #fff; background: rgba(0,0,0,.6); border: 2px solid #fff; border-radius: 12px; }
 </style>
 </head>
@@ -20,6 +22,7 @@
 <main>
   <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas"></canvas>
+  <div id="sign" hidden>67</div>
   <button id="clear">Löschen</button>
   <div id="status">Lade Modell …</div>
 </main>
@@ -31,6 +34,7 @@ import { HandLandmarker, FilesetResolver, DrawingUtils }
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const status = document.getElementById("status");
+const sign = document.getElementById("sign");
 const ctx = canvas.getContext("2d");
 const draw = new DrawingUtils(ctx);
 
@@ -44,6 +48,14 @@ function pinchPoint(hand, w, h) {
   return Math.hypot(t.x - i.x, t.y - i.y) < PINCH * Math.hypot(wr.x - m.x, wr.y - m.y)
     ? { x: (t.x + i.x) / 2, y: (t.y + i.y) / 2 }
     : null;
+}
+
+// Daumen runter: die Daumenspitze (4) liegt deutlich tiefer als jeder andere Punkt der Hand (Handgröße wie oben).
+const THUMB_DOWN = 0.4;
+function thumbDown(hand, w, h) {
+  const size = Math.hypot((hand[0].x - hand[9].x) * w, (hand[0].y - hand[9].y) * h);
+  const lowestOther = Math.max(...hand.filter((_, i) => i !== 4).map((p) => p.y * h));
+  return hand[4].y * h - lowestOther > THUMB_DOWN * size;
 }
 
 // Quadrat, dessen linke und rechte Kantenmitte auf den Pinch-Punkten a und b liegen: Größe = Abstand, Drehung = Winkel.
@@ -100,6 +112,7 @@ try {
         draw.drawLandmarks(hand, { color: "#ff4081", radius: 4 });
       }
       const pinches = landmarks.map((hand) => pinchPoint(hand, canvas.width, canvas.height)).filter(Boolean);
+      sign.hidden = !landmarks.some((hand) => thumbDown(hand, canvas.width, canvas.height));
       update(pinches.length === 2 ? squareOf(...pinches) : null);
       placed.forEach((s) => drawSquare(s, "#69f0ae"));
       if (active) drawSquare(active, "#ffeb3b");
