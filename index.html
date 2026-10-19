@@ -13,12 +13,14 @@
   video, canvas { width: 100%; display: block; transform: scaleX(-1); } /* Selfie-Ansicht */
   canvas { position: absolute; inset: 0; height: 100%; }
   #status { padding: 12px 16px; }
+  #clear { position: absolute; top: 12px; right: 12px; min-width: 96px; min-height: 48px; padding: 0 20px; font: inherit; color: #fff; background: rgba(0,0,0,.6); border: 2px solid #fff; border-radius: 12px; }
 </style>
 </head>
 <body>
 <main>
   <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas"></canvas>
+  <button id="clear">Löschen</button>
   <div id="status">Lade Modell …</div>
 </main>
 
@@ -64,6 +66,7 @@ function drawSquare({ x, y, angle, side }, color) {
 const LOST_FRAMES = 5;
 let active = null, lost = 0;
 const placed = [];
+document.getElementById("clear").onclick = () => { placed.length = 0; };
 function update(now) {
   if (now) { active = now; lost = 0; }
   else if (active && ++lost > LOST_FRAMES) { placed.push(active); active = null; }
