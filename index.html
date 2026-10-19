@@ -36,11 +36,12 @@ const draw = new DrawingUtils(ctx);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 
 // Pinch = Daumenspitze (4) und Zeigefingerspitze (8) nah, relativ zur Handgröße (Handgelenk 0 bis Mittelfinger-Ansatz 9).
+// Hysterese: ein laufender Pinch hält bis PINCH_HOLD, damit er an der Schwelle nicht flackert.
 // Gibt die Mitte der beiden Spitzen in Pixeln zurück, sonst null.
-const PINCH = 0.35;
-function pinchPoint(hand, w, h) {
+const PINCH = 0.35, PINCH_HOLD = 0.5;
+function pinchPoint(hand, w, h, holding) {
   const [t, i, wr, m] = [4, 8, 0, 9].map((n) => ({ x: hand[n].x * w, y: hand[n].y * h }));
-  return Math.hypot(t.x - i.x, t.y - i.y) < PINCH * Math.hypot(wr.x - m.x, wr.y - m.y)
+  return Math.hypot(t.x - i.x, t.y - i.y) < (holding ? PINCH_HOLD : PINCH) * Math.hypot(wr.x - m.x, wr.y - m.y)
     ? { x: (t.x + i.x) / 2, y: (t.y + i.y) / 2 }
     : null;
 }
@@ -66,10 +67,11 @@ const LOST_FRAMES = 5;
 let active = null, lost = 0;
 const placed = [];
 document.getElementById("clear").onclick = () => { placed.length = 0; };
-// Glättung gegen Zittern: 1 = keine, kleiner = ruhiger aber träger. Winkel sind nach 180° gleich (Hände vertauscht), daher dort umbrechen.
-const SMOOTH = 0.5;
+// Glättung gegen Zittern: 1 = keine, kleiner = ruhiger aber träger. Adaptiv: langsam = ruhig (0.3), schnelle Bewegung = wenig Verzögerung (bis 1).
+// Winkel sind nach 180° gleich (Hände vertauscht), daher dort umbrechen.
 function smooth(prev, next) {
   if (!prev) return next;
+  const SMOOTH = Math.min(1, 0.3 + 3 * Math.hypot(next.x - prev.x, next.y - prev.y) / (prev.side || 1));
   const mix = (a, b) => a + (b - a) * SMOOTH;
   const dAngle = ((((next.angle - prev.angle + Math.PI / 2) % Math.PI) + Math.PI) % Math.PI) - Math.PI / 2;
   return { x: mix(prev.x, next.x), y: mix(prev.y, next.y), side: mix(prev.side, next.side), angle: prev.angle + dAngle * SMOOTH };
@@ -111,7 +113,7 @@ try {
         draw.drawConnectors(hand, HandLandmarker.HAND_CONNECTIONS, { color: "#00e5ff", lineWidth: 4 });
         draw.drawLandmarks(hand, { color: "#ff4081", radius: 4 });
       }
-      const pinches = landmarks.map((hand) => pinchPoint(hand, canvas.width, canvas.height)).filter(Boolean);
+      const pinches = landmarks.map((hand) => pinchPoint(hand, canvas.width, canvas.height, !!active)).filter(Boolean);
       update(pinches.length === 2 ? squareOf(...pinches) : null);
       placed.forEach((s) => drawSquare(s, "#69f0ae"));
       if (active) drawSquare(active, "#ffeb3b");
