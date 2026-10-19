@@ -34,6 +34,28 @@ const draw = new DrawingUtils(ctx);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 
+// Pinch = Daumenspitze (4) und Zeigefingerspitze (8) nah, relativ zur Handgröße (Handgelenk 0 bis Mittelfinger-Ansatz 9).
+// Gibt die Mitte der beiden Spitzen in Pixeln zurück, sonst null.
+const PINCH = 0.35;
+function pinchPoint(hand, w, h) {
+  const [t, i, wr, m] = [4, 8, 0, 9].map((n) => ({ x: hand[n].x * w, y: hand[n].y * h }));
+  return Math.hypot(t.x - i.x, t.y - i.y) < PINCH * Math.hypot(wr.x - m.x, wr.y - m.y)
+    ? { x: (t.x + i.x) / 2, y: (t.y + i.y) / 2 }
+    : null;
+}
+
+// Quadrat, dessen linke und rechte Kantenmitte auf den Pinch-Punkten a und b liegen: Größe = Abstand, Drehung = Winkel.
+function drawSquare(a, b) {
+  const side = Math.hypot(b.x - a.x, b.y - a.y);
+  ctx.save();
+  ctx.translate((a.x + b.x) / 2, (a.y + b.y) / 2);
+  ctx.rotate(Math.atan2(b.y - a.y, b.x - a.x));
+  ctx.strokeStyle = "#ffeb3b";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(-side / 2, -side / 2, side, side);
+  ctx.restore();
+}
+
 try {
   const fileset = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
@@ -61,7 +83,11 @@ try {
         draw.drawConnectors(hand, HandLandmarker.HAND_CONNECTIONS, { color: "#00e5ff", lineWidth: 4 });
         draw.drawLandmarks(hand, { color: "#ff4081", radius: 4 });
       }
-      status.textContent = landmarks.length ? `${landmarks.length} Hand/Hände erkannt` : "Zeig mir deine Hände ✋";
+      const pinches = landmarks.map((hand) => pinchPoint(hand, canvas.width, canvas.height)).filter(Boolean);
+      if (pinches.length === 2) drawSquare(...pinches);
+      status.textContent = pinches.length === 2 ? "Quadrat aktiv 🟨"
+        : landmarks.length ? `${landmarks.length} Hand/Hände erkannt – Daumen + Zeigefinger zusammen, beide Hände`
+        : "Zeig mir deine Hände ✋";
     }
     requestAnimationFrame(loop);
   })();
