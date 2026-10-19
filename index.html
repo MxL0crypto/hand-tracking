@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hand Tracking</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#111111">
+<style>
+  body { margin: 0; background: #111; color: #eee; font: 16px system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; }
+  main { position: relative; width: min(100vw, 960px); }
+  video, canvas { width: 100%; display: block; transform: scaleX(-1); } /* Selfie-Ansicht */
+  canvas { position: absolute; inset: 0; height: 100%; }
+  #status { padding: 12px 16px; }
+</style>
+</head>
+<body>
+<main>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <div id="status">Lade Modell …</div>
+</main>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver, DrawingUtils }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const status = document.getElementById("status");
+const ctx = canvas.getContext("2d");
+const draw = new DrawingUtils(ctx);
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+
+try {
+  const fileset = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  const landmarker = await HandLandmarker.createFromOptions(fileset, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO",
+    numHands: 2,
+  });
+
+  video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+  await video.play();
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  let lastTime = -1;
+  (function loop() {
+    if (video.currentTime !== lastTime) {
+      lastTime = video.currentTime;
+      const { landmarks } = landmarker.detectForVideo(video, performance.now());
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const hand of landmarks) {
+        draw.drawConnectors(hand, HandLandmarker.HAND_CONNECTIONS, { color: "#00e5ff", lineWidth: 4 });
+        draw.drawLandmarks(hand, { color: "#ff4081", radius: 4 });
+      }
+      status.textContent = landmarks.length ? `${landmarks.length} Hand/Hände erkannt` : "Zeig mir deine Hände ✋";
+    }
+    requestAnimationFrame(loop);
+  })();
+} catch (e) {
+  status.textContent = "Fehler: " + e.message; // z.B. Kamera verweigert oder kein HTTPS
+}
+</script>
+</body>
+</html>
