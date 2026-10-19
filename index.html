@@ -67,18 +67,37 @@ const LOST_FRAMES = 5;
 let active = null, lost = 0;
 const placed = [];
 document.getElementById("clear").onclick = () => { placed.length = 0; };
-// Glättung gegen Zittern: 1 = keine, kleiner = ruhiger aber träger. Adaptiv: langsam = ruhig (0.3), schnelle Bewegung = wenig Verzögerung (bis 1).
-// Winkel sind nach 180° gleich (Hände vertauscht), daher dort umbrechen.
-function smooth(prev, next) {
+// One-Euro-Filter auf den Landmarks: ruhig bei langsamer Hand, kaum Verzögerung bei schneller.
+// MIN_CUTOFF (Hz) kleiner = ruhiger; BETA größer = weniger Verzögerung bei Bewegung. Koordinaten sind 0..1.
+const MIN_CUTOFF = 1, BETA = 10;
+const alpha = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+function euro(s, v, dt) {
+  if (!s) return { v, d: 0, raw: v };
+  const d = s.d + alpha(1, dt) * ((v - s.raw) / dt - s.d);
+  return { v: s.v + alpha(MIN_CUTOFF + BETA * Math.abs(d), dt) * (v - s.v), d, raw: v };
+}
+// shortcut: Filter hängen am Index der Hand; vertauscht MediaPipe die Reihenfolge, holt der Filter das in ein paar Bildern auf.
+let filters = [], lastT = 0;
+function filterHands(landmarks, t) {
+  const dt = Math.max((t - lastT) / 1000, 1e-3);
+  lastT = t;
+  if (landmarks.length !== filters.length) filters = landmarks.map(() => []);
+  return landmarks.map((hand, h) => hand.map((p, i) => {
+    const [sx, sy] = (filters[h][i] ||= []);
+    filters[h][i] = [euro(sx, p.x, dt), euro(sy, p.y, dt)];
+    return { x: filters[h][i][0].v, y: filters[h][i][1].v };
+  }));
+}
+
+// Winkel sind nach 180° gleich (Hände vertauscht), daher zum vorherigen Winkel hin umbrechen.
+function unwrap(prev, next) {
   if (!prev) return next;
-  const SMOOTH = Math.min(1, 0.3 + 3 * Math.hypot(next.x - prev.x, next.y - prev.y) / (prev.side || 1));
-  const mix = (a, b) => a + (b - a) * SMOOTH;
   const dAngle = ((((next.angle - prev.angle + Math.PI / 2) % Math.PI) + Math.PI) % Math.PI) - Math.PI / 2;
-  return { x: mix(prev.x, next.x), y: mix(prev.y, next.y), side: mix(prev.side, next.side), angle: prev.angle + dAngle * SMOOTH };
+  return { ...next, angle: prev.angle + dAngle };
 }
 
 function update(now) {
-  if (now) { active = smooth(active, now); lost = 0; }
+  if (now) { active = unwrap(active, now); lost = 0; }
   else if (active && ++lost > LOST_FRAMES) { placed.push(active); active = null; }
 }
 
@@ -107,7 +126,8 @@ try {
   (function loop() {
     if (video.currentTime !== lastTime) {
       lastTime = video.currentTime;
-      const { landmarks } = landmarker.detectForVideo(video, performance.now());
+      const t = performance.now();
+      const landmarks = filterHands(landmarker.detectForVideo(video, t).landmarks, t);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (const hand of landmarks) {
         draw.drawConnectors(hand, HandLandmarker.HAND_CONNECTIONS, { color: "#00e5ff", lineWidth: 4 });
